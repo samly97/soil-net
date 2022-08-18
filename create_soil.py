@@ -37,8 +37,8 @@ if __name__ == '__main__':
     skeleton_dir = io.create_dir(data_path, skeleton_dir)
     target_dir = io.create_dir(data_path, target_dir)
 
-    N_os = 5
-    N_b = 5
+    N_os = 150
+    N_b = 150
 
     ret_dict = {}
 
@@ -66,8 +66,13 @@ if __name__ == '__main__':
         # Skeleton of porous media (Input data)
         skel = create_soil.skeletonize_soil(soil, axis=0)
 
-        # Generate ground-truth data
-        tort_sim = ps.simulations.tortuosity_fd(soil, axis=0)
+        # May throw exception if inlet and outlet fluxes do not match
+        try:
+            # Generate ground-truth data
+            tort_sim = ps.simulations.tortuosity_fd(soil, axis=0)
+        except Exception:
+            data_i -= 1
+            continue
 
         # Save INPUT - TARGET Data
         io.save_numpy_arr(
