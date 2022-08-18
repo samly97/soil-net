@@ -2,5 +2,8 @@
 *.npy
 *.pyc
 
+.ipynb_checkpoints/*
+*.ipynb*
+
 # Ignore dataset directory
 dataset*
