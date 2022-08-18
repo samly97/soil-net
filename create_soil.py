@@ -158,6 +158,8 @@ if __name__ == '__main__':
     data_i = 0
 
     for i in range(0, N_os):
+        # Dummy text message
+
         data_i += 1
 
     for i in range(0, N_b):
