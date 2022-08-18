@@ -1,136 +1,14 @@
+from utils import io
+from datagen import create_soil
+
 import porespy as ps
-import numpy as np
 
-import json
+from tqdm import tqdm
 import os
-
-# For skeletonizing the images
-import scipy.ndimage as spim
-from skimage.morphology import skeletonize_3d, ball
-
-
-def load_json(
-    filename: str,
-    path: str = "",
-):
-    if path == "":
-        filepath = os.path.join(os.getcwd(), filename)
-    else:
-        filepath = os.path.join(path, filename)
-
-    f = open(filepath, "r")
-    return json.load(f)
-
-
-def save_micro_png(
-    img: np.ndarray,
-    fname: str,
-) -> None:
-    np.save(fname, img)
-
-
-def create_dir(
-    path: str,
-    dirname: str,
-) -> str:
-    out_dir = os.path.join(path, dirname)
-
-    try:
-        os.mkdir(out_dir)
-    except FileExistsError:
-        pass
-
-    return out_dir
-
-
-def create_blob_soil(
-    pixels: int = 128,
-    min_porosity: float = 0.1,
-    max_porosity: float = 0.9,
-) -> np.ndarray:
-
-    # Scales randomly generated porosity from: min_porosity - max_porosity
-    porosity = min_porosity + np.random.rand() * max_porosity
-
-    # Blobiness of 1-3 (high is exclusive), see documentation for reference:
-    # https://porespy.org/modules/generated/porespy.generators.blobs.html
-    blobiness = np.random.randint(1, high=4)
-
-    soil = ps.generators.blobs(
-        shape=[pixels, pixels, pixels], porosity=porosity, blobiness=blobiness,
-    )
-
-    return soil
-
-
-def create_overlapping_sphere_soil(
-    pixels: int = 128,
-    r: int = 5,
-    min_porosity: float = 0.1,
-    max_porosity: float = 0.9,
-    max_iters=15,
-) -> np.ndarray:
-
-    # Scales randomly generated porosity from: min_porosity - max_porosity
-    porosity = min_porosity + np.random.rand() * max_porosity
-
-    soil = ps.generators.overlapping_spheres(
-        shape=[pixels, pixels, pixels], r=r, porosity=porosity,
-        maxiter=max_iters,
-    )
-
-    return soil
-
-
-def skeletonize_porous_media(
-    im: np.ndarray,
-    axis: int = 0
-) -> np.ndarray:
-    if len(im.shape) < 3:
-        return ValueError("Image needs to be 3-dimensional!")
-
-    # Work off of a copy to be safe
-    im = np.copy(im)
-
-    # Change swap axis to skeletonize in the desired direction
-    im = np.swapaxes(im, 0, axis)
-
-    # Default is the 0 axis
-    pw = [[20, 20], [0, 0], [0, 0]]
-    strel = ball
-
-    # Extend pore channels in the z-axis
-    temp = np.pad(im, pw, mode="edge")
-    temp = np.pad(temp, pw, mode="constant", constant_values=True)
-
-    # Create the skeleton
-    sk = skeletonize_3d(temp) > 0
-
-    # Remove the previously applied padding
-    sk = ps.tools.unpad(sk, pw)
-    sk = ps.tools.unpad(sk, pw)
-
-    # Createa a fatter skeleton
-    sk2 = spim.binary_dilation(sk, structure=strel(1))
-
-    # Get rid of non-percolating void space
-
-    # Inlets = outlets in the axis of interest (z here)
-    inlets = np.zeros_like(im)
-    inlets[0, ...] = True
-    outlets = np.zeros_like(im)
-    outlets[-1, ...] = True
-
-    # Remove pores that are not connected to inlets/outlets
-    sk2 = ps.filters.trim_nonpercolating_paths(sk2, inlets, outlets)
-
-    return sk2
+import json
 
 
 if __name__ == '__main__':
-
-    # Load config file
-
     """
     Algorithm:
 
@@ -142,26 +20,79 @@ if __name__ == '__main__':
         porosity, tortuosity, formation factors.
     """
 
-    path = os.getcwd()
-
+    # Naming scheme for data: 1.npy
     def get_fname(idx): return str(idx) + ".npy"
+
+    # Data directory names
+    path = os.getcwd()
 
     soil_dir = "soil"
     skeleton_dir = "skeleton"
     target_dir = "target"
 
-    N_os = 150
-    N_b = 150
+    # Create directories
+    data_path = io.create_dir(path, "dataset")
+
+    soil_dir = io.create_dir(data_path, soil_dir)
+    skeleton_dir = io.create_dir(data_path, skeleton_dir)
+    target_dir = io.create_dir(data_path, target_dir)
+
+    N_os = 5
+    N_b = 5
 
     ret_dict = {}
 
     data_i = 0
 
-    for i in range(0, N_os):
-        # Dummy text message
-
+    for i in tqdm(range(0, N_os + N_b)):
         data_i += 1
 
-    for i in range(0, N_b):
-        data_i += 1
-        print(data_i)
+        # Porous media (Input data)
+        if data_i <= N_os:
+            soil = create_soil.create_overlapping_sphere_soil()
+            media_type = "overlapping spheres"
+        else:
+            soil = create_soil.create_blob_soil()
+            media_type = "blobs"
+
+        # If removing non-percolating pores throws an error, discard
+        # the generated porous media and continue
+        try:
+            soil = create_soil.clean_soil(soil)
+        except Exception:
+            data_i -= 1
+            continue
+
+        # Skeleton of porous media (Input data)
+        skel = create_soil.skeletonize_soil(soil, axis=0)
+
+        # Generate ground-truth data
+        tort_sim = ps.simulations.tortuosity_fd(soil, axis=0)
+
+        # Save INPUT - TARGET Data
+        io.save_numpy_arr(
+            soil,
+            os.path.join(soil_dir, get_fname(data_i))
+        )
+        io.save_numpy_arr(
+            skel,
+            os.path.join(skeleton_dir, get_fname(data_i))
+        )
+        io.save_numpy_arr(
+            tort_sim.concentration,
+            os.path.join(target_dir, get_fname(data_i))
+        )
+
+        # Write metadata to dictionary
+        ret_dict[get_fname(data_i)] = {
+            "media": media_type,
+            "effective_porosity": tort_sim.effective_porosity,
+            "tortuosity": tort_sim.tortuosity,
+            "formation_factor": tort_sim.formation_factor,
+        }
+
+    with open(
+        os.path.join(data_path, "dataset.json"),
+        "w",
+    ) as outfile:
+        json.dump(ret_dict, outfile, indent=4)
