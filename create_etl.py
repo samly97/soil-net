@@ -49,13 +49,20 @@ def get_split_indices(
     return ((0, trn_idx), (trn_idx, val_idx))
 
 
-def create_etl() -> Tuple[tf.data.Dataset, tf.data.Dataset]:
+def create_etl(
+    batch_size: int,
+    trn_split: float = 0.8,
+    data_dir: str = "dataset",
+    soil_dir: str = "soil",
+    skel_dir: str = "skeleton",
+    target_dir: str = "target",
+) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
 
-    pic_num = parse_raw_data("dataset", "soil")  # cfg file?
+    pic_num = parse_raw_data(data_dir, soil_dir)
     pic_num = shuffle_dataset(pic_num)
 
     trn_idx, val_idx = get_split_indices(
-        0.8,  # cfg file?
+        trn_split,
         pic_num,
     )
 
@@ -67,11 +74,11 @@ def create_etl() -> Tuple[tf.data.Dataset, tf.data.Dataset]:
 
         etl = ETL(
             criteria_arr,
-            batch_size=8,  # cfg file?
-            data_dir=os.path.join(os.getcwd(), "dataset"),  # cfg file?
-            soil_dir="soil",  # cfg file?
-            skel_dir="skeleton",  # cfg file?
-            target_dir="target",  # cfg file?
+            batch_size=batch_size,
+            data_dir=os.path.join(os.getcwd(), data_dir),
+            soil_dir=soil_dir,
+            skel_dir=skel_dir,
+            target_dir=target_dir,
         )
         datasets[idx] = etl.get_ml_dataset()
 
@@ -85,4 +92,4 @@ def create_etl() -> Tuple[tf.data.Dataset, tf.data.Dataset]:
 
 
 if __name__ == "__main__":
-    create_etl()
+    create_etl(8)
