@@ -25,28 +25,40 @@ class LaplacianLoss(tf.keras.losses.Loss):
         self.unborder = tf.reshape(self.unborder, (1, dim, dim, dim, 1))
 
     def call(self, y_true, y_pred):
-        _ = y_true
 
         # Dims are now (Batch, Height, Width, Depth, Channels)
         y_pred = tf.expand_dims(y_pred, axis=-1)
-
-        shape = tf.shape(y_pred)
-        batch_size = tf.cast(shape[0], tf.int32)
-        batch_size = tf.concat([[batch_size], [1], [1], [1], [1]], 0)
-
-        # Computes the Laplacian (note that edges are weird - laplacian on edge
-        # and vals of 0)
-        ret = tf.nn.conv3d(y_pred, self.laplacian, (1, 1, 1, 1, 1), "SAME")
+        y_true = tf.expand_dims(y_true, axis=-1)
 
         # Tile `unborder` `batch_size` times
-        temp = tf.tile(self.unborder, batch_size)
+        tiled_unborder = self._tile_unborder(y_pred)
+
+        pred_lp = self._compute_laplacian(y_pred, tiled_unborder)
+        true_lp = self._compute_laplacian(y_true, tiled_unborder)
+
+        # (laplacian - 0) ^ 2
+        return tf.reduce_mean(tf.square(pred_lp - true_lp))
+
+    def _compute_laplacian(self, y, tiled_unborder):
+        # Computes the Laplacian (note that edges are weird - laplacian on edge
+        # and vals of 0)
+        ret = tf.nn.conv3d(y, self.laplacian, (1, 1, 1, 1, 1), "SAME")
 
         # Zero out border pixels - the gradient at these values should be 0 too
         # due to chain rule.
-        ret = tf.math.multiply(ret, temp)
+        ret = tf.math.multiply(ret, tiled_unborder)
 
-        # (laplacian - 0) ^ 2
-        return tf.reduce_mean(tf.square(ret))
+        return ret
+
+    def _tile_unborder(self, y):
+        shape = tf.shape(y)
+        batch_size = tf.cast(shape[0], tf.int32)
+        batch_size = tf.concat([[batch_size], [1], [1], [1], [1]], 0)
+
+        # Tile `unborder` `batch_size` times
+        tiled_unborder = tf.tile(self.unborder, batch_size)
+
+        return tiled_unborder
 
     def get_config(self):
         return {
