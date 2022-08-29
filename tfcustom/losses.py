@@ -1,6 +1,31 @@
 import tensorflow as tf
 
 
+class OutletLoss(tf.keras.losses.Loss):
+
+    def __init__(
+        self,
+        dim: int = 128,
+        name="oulet_bc_mse"
+    ):
+        super().__init__(name=name)
+        self.ones_tensor = tf.ones((1, dim, dim))
+
+    def call(self, y_true, y_pred):
+
+        y_true = tf.gather(y_true, -1, axis=1)
+        y_pred = tf.gather(y_pred, -1, axis=1)
+
+        y_pred = tf.math.multiply(y_pred, self.ones_tensor)
+
+        return tf.reduce_mean(tf.square(y_pred - y_true))
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg["dim"] = self.dim.numpy()
+        return cfg
+
+
 class LaplacianLoss(tf.keras.losses.Loss):
 
     def __init__(self, dim: int = 128, name="laplacian_mse"):
@@ -71,27 +96,34 @@ class OverallLoss(tf.keras.losses.Loss):
         self,
         lossA,
         lossB,
+        lossC,
         W_a: float = 1.,
         W_b: float = 1.,
+        W_c: float = 1.,
         name="overall_loss",
     ):
         super().__init__(name=name)
 
         self.weight_A = tf.cast(W_a, tf.float32)
         self.weight_B = tf.cast(W_b, tf.float32)
+        self.weight_C = tf.cast(W_c, tf.float32)
 
         self.lossA = lossA
         self.lossB = lossB
+        self.lossC = lossC
 
     def call(self, y_true, y_pred):
         return self.weight_A * self.lossA(y_true, y_pred) \
-            + self.weight_B * self.lossB(y_true, y_pred)
+            + self.weight_B * self.lossB(y_true, y_pred) \
+            + self.weight_C * self.lossC(y_true, y_pred)
 
     def get_config(self):
         cfg = super().get_config()
         cfg["weight_A"] = self.weight_A.numpy()
         cfg["weight_B"] = self.weight_B.numpy()
+        cfg["weight_C"] = self.weight_C.numpy()
         cfg["lossA"] = tf.keras.losses.serialize(self.lossA)
         cfg["lossB"] = tf.keras.losses.serialize(self.lossB)
+        cfg["lossC"] = tf.keras.losses.serialize(self.lossC)
 
         return cfg
