@@ -61,10 +61,8 @@ class LaplacianLoss(tf.keras.losses.Loss):
         return tiled_unborder
 
     def get_config(self):
-        return {
-            "laplacian": self.laplacian,
-            "unborder": self.unborder,
-        }
+        cfg = super().get_config()
+        return cfg
 
 
 class OverallLoss(tf.keras.losses.Loss):
@@ -90,9 +88,10 @@ class OverallLoss(tf.keras.losses.Loss):
             + self.weight_B * self.lossB(y_true, y_pred)
 
     def get_config(self):
-        return {
-            "weight_A": self.weight_A,
-            "weight_B": self.weight_B,
-            "lossA": self.lossA,
-            "lossB": self.lossB,
-        }
+        cfg = super().get_config()
+        cfg["weight_A"] = self.weight_A.numpy()
+        cfg["weight_B"] = self.weight_B.numpy()
+        cfg["lossA"] = tf.keras.losses.serialize(self.lossA)
+        cfg["lossB"] = tf.keras.losses.serialize(self.lossB)
+
+        return cfg
