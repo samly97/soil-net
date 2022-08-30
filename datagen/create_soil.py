@@ -61,6 +61,29 @@ def create_overlapping_sphere_soil(
     return soil
 
 
+def create_fibrous_soil(
+    pixels: int = 128,
+    r: int = 5,
+    phi_max: int = 0,
+    theta_max: int = 90,
+    min_porosity: float = 0.1,
+    max_porosity: float = 0.8,
+    max_iters=15,
+) -> np.ndarray:
+
+    # Scales randomly generated porosity from: min_porosity - max_porosity
+    porosity = min_porosity + np.random.rand() * (max_porosity - min_porosity)
+
+    soil = ps.generators.cylinders(
+        shape=[pixels, pixels, pixels],
+        r=r, phi_max=phi_max, theta_max=theta_max,
+        porosity=porosity,
+        maxiter=max_iters,
+    )
+
+    return soil
+
+
 def skeletonize_soil(
     im: np.ndarray,
     axis: int = 0
