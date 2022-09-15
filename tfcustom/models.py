@@ -1,5 +1,4 @@
 import tensorflow as tf
-from findiff import FinDiff
 
 
 class SoilNet(tf.keras.Model):
@@ -23,28 +22,56 @@ class SoilNet(tf.keras.Model):
         # dC, L, A are scalars - used for effective diffusivity later on
         dC = C_in - C_out
         L = dim
-        A = dim ** 3
-
-        # First derivative in the x-axis with O(h^2) accuracy
-        # -- Apparently FinDiff doesn't do odd integer accuracy
-        d_dx = FinDiff(0, 1, 1, acc=2)
+        A = dim ** 2
 
         # Predict concentration map and estimate derivative
         conc_map = self.predict((soil, skel))
-        deriv = tf.numpy_function(d_dx, [conc_map], tf.float32)
 
-        # Gather the inlet derivatives, axis = (batch, x, y, z)
-        inlet_deriv = tf.gather(deriv, 0, axis=1)
+        # Get the batch size (how many images being handled)
+        batch_size = tf.shape(conc_map)[0]
 
-        # Reduce twice to get rid of y and z axes
-        flux = tf.math.reduce_sum(inlet_deriv, axis=1)
+        # Create a boolean mask to selectively choose valid fluxes to use to
+        # compute the total flux from the inlet.
+        flux_mask = tf.ones((1, dim, dim), dtype=tf.bool)
+        flux_mask = tf.tile(flux_mask, (batch_size, 1, 1))
+
+        # Only evaluate flux on non-solid inlets and "non-blocked" inlets (void
+        # inlets with solid space below)
+        soil_bool = tf.identity(soil)
+        soil_bool = tf.cast(soil_bool, tf.bool)
+
+        flux_mask = tf.math.logical_and(
+            flux_mask, tf.gather(soil_bool, 0, axis=1),
+        )
+        flux_mask = tf.math.logical_and(
+            flux_mask, tf.gather(soil_bool, 1, axis=1),
+        )
+
+        # Ragged boolean mask keeps the shape of the original tensor
+        temp_pix0 = tf.ragged.boolean_mask(
+            tf.gather(conc_map, 0, axis=1),
+            flux_mask,
+        )
+        temp_pix1 = tf.ragged.boolean_mask(
+            tf.gather(conc_map, 1, axis=1),
+            flux_mask,
+        )
+
+        # Compute the flux. `reduce_sum` is used twice to reduce the `y` and
+        # `z` dimensions.
+        #
+        # J = -D * (C(1) - C(0)) / dx
+        #   D  = 1
+        #   dx = 1
+        flux = tf.math.subtract(temp_pix0, temp_pix1)
+        flux = tf.math.reduce_sum(flux, axis=1)
         flux = tf.math.reduce_sum(flux, axis=1)
 
         # Get the effective porosities of the samples
         eps = tf.math.reduce_sum(soil, axis=1)
         eps = tf.math.reduce_sum(eps, axis=1)
         eps = tf.math.reduce_sum(eps, axis=1)
-        eps = tf.math.scalar_mul(1/A, eps)
+        eps = tf.math.scalar_mul(1 / (dim ** 3), eps)
 
         # Compute effective diffusivity
         Deff = tf.math.scalar_mul((L-1)/A/dC, flux)
