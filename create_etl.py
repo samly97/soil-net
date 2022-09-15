@@ -19,6 +19,7 @@ def parse_raw_data(
     input_im_fname = np.array([fname for fname in os.listdir(input_im_dir)])
 
     pic_num = [int(fname.split(".npy")[0]) for fname in input_im_fname]
+    pic_num.sort()
 
     return pic_num
 
