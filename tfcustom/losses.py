@@ -31,7 +31,7 @@ class LaplacianLoss(tf.keras.losses.Loss):
         y_pred = tf.expand_dims(y_pred, axis=-1)
 
         # "Recover" the porous media from concentration map
-        p_media = tf.math.divide(y_true, y_true)
+        p_media = tf.math.divide_no_nan(y_true, y_true)
         p_media = tf.cast(p_media, tf.bool)
 
         # Compute the Laplacian and get rid of borders
@@ -57,8 +57,26 @@ class LaplacianLoss(tf.keras.losses.Loss):
     def _mask_internal_grain_boundaries(self, pred_lp, p_media):
         # Create a mask which effectively removes the internal boundary in the
         # void space: (solid/boundary (eroded void)/void)
-        grain_boundaries = tf.numpy_function(
-            binary_erosion, [p_media], tf.bool
+
+        # Create a function to map each individual tensor in a tensor array to
+        # the `binary_erosion` function. Otherwise, the erosion would occur on
+        # ALL the tensors in the array simultaneously. Which is clearly not
+        # what we want.
+        def binary_erosion_tf(p_media_arr): return tf.py_function(
+            lambda porous_media: binary_erosion(
+                porous_media,
+                structure=None,
+                iterations=1,
+                mask=None,
+                output=None,
+                border_value=0,
+                origin=0,
+                brute_force=False), [p_media_arr], tf.bool,
+        )
+
+        # Map each individual porous media to binary erosion
+        grain_boundaries = tf.map_fn(
+            binary_erosion_tf, p_media, tf.bool
         )
 
         p_media = tf.cast(p_media, tf.float32)
@@ -68,8 +86,10 @@ class LaplacianLoss(tf.keras.losses.Loss):
         # Expand `grain_boundaries` to have the same shape as `pred_lp`, namely
         # [batch, dim, dim, dim, 1]
         grain_boundaries = tf.expand_dims(grain_boundaries, axis=-1)
+        p_media = tf.expand_dims(p_media, axis=-1)
 
         # Mask out internal grain boundaries
+        pred_lp = tf.math.multiply(pred_lp, p_media)
         pred_lp = tf.math.multiply(pred_lp, grain_boundaries)
 
         return pred_lp
