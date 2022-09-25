@@ -1,4 +1,5 @@
 import tensorflow as tf
+from scipy.ndimage import binary_erosion
 
 
 class LaplacianLoss(tf.keras.losses.Loss):
@@ -28,37 +29,50 @@ class LaplacianLoss(tf.keras.losses.Loss):
 
         # Dims are now (Batch, Height, Width, Depth, Channels)
         y_pred = tf.expand_dims(y_pred, axis=-1)
-        y_true = tf.expand_dims(y_true, axis=-1)
 
-        # Tile `unborder` `batch_size` times
-        tiled_unborder = self._tile_unborder(y_pred)
+        # "Recover" the porous media from concentration map
+        p_media = tf.math.divide(y_true, y_true)
+        p_media = tf.cast(p_media, tf.bool)
 
-        pred_lp = self._compute_laplacian(y_pred, tiled_unborder)
-        true_lp = self._compute_laplacian(y_true, tiled_unborder)
+        # Compute the Laplacian and get rid of borders
+        pred_lp = self._compute_laplacian(y_pred)
+
+        # Mask internal grain boundaries
+        pred_lp = self._mask_internal_grain_boundaries(pred_lp, p_media)
 
         # (laplacian - 0) ^ 2
-        return tf.reduce_mean(tf.square(pred_lp - true_lp))
+        return tf.reduce_mean(tf.square(pred_lp))
 
-    def _compute_laplacian(self, y, tiled_unborder):
+    def _compute_laplacian(self, y):
         # Computes the Laplacian (note that edges are weird - laplacian on edge
         # and vals of 0)
         ret = tf.nn.conv3d(y, self.laplacian, (1, 1, 1, 1, 1), "SAME")
 
         # Zero out border pixels - the gradient at these values should be 0 too
         # due to chain rule.
-        ret = tf.math.multiply(ret, tiled_unborder)
+        ret = tf.math.multiply(ret, self.unborder)
 
         return ret
 
-    def _tile_unborder(self, y):
-        shape = tf.shape(y)
-        batch_size = tf.cast(shape[0], tf.int32)
-        batch_size = tf.concat([[batch_size], [1], [1], [1], [1]], 0)
+    def _mask_internal_grain_boundaries(self, pred_lp, p_media):
+        # Create a mask which effectively removes the internal boundary in the
+        # void space: (solid/boundary (eroded void)/void)
+        grain_boundaries = tf.numpy_function(
+            binary_erosion, [p_media], tf.bool
+        )
 
-        # Tile `unborder` `batch_size` times
-        tiled_unborder = tf.tile(self.unborder, batch_size)
+        p_media = tf.cast(p_media, tf.float32)
+        grain_boundaries = tf.cast(grain_boundaries, tf.float32)
+        grain_boundaries = tf.math.multiply(grain_boundaries, p_media)
 
-        return tiled_unborder
+        # Expand `grain_boundaries` to have the same shape as `pred_lp`, namely
+        # [batch, dim, dim, dim, 1]
+        grain_boundaries = tf.expand_dims(grain_boundaries, axis=-1)
+
+        # Mask out internal grain boundaries
+        pred_lp = tf.math.multiply(pred_lp, grain_boundaries)
+
+        return pred_lp
 
     def get_config(self):
         cfg = super().get_config()
