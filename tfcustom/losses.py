@@ -1,5 +1,5 @@
 import tensorflow as tf
-from scipy.ndimage import binary_erosion
+from scipy.ndimage import binary_dilation
 
 
 class LaplacianLoss(tf.keras.losses.Loss):
@@ -62,8 +62,8 @@ class LaplacianLoss(tf.keras.losses.Loss):
         # the `binary_erosion` function. Otherwise, the erosion would occur on
         # ALL the tensors in the array simultaneously. Which is clearly not
         # what we want.
-        def binary_erosion_tf(p_media_arr): return tf.py_function(
-            lambda porous_media: binary_erosion(
+        def binary_dilation_tf(p_media_arr): return tf.py_function(
+            lambda porous_media: binary_dilation(
                 porous_media,
                 structure=None,
                 iterations=1,
@@ -74,10 +74,16 @@ class LaplacianLoss(tf.keras.losses.Loss):
                 brute_force=False), [p_media_arr], tf.bool,
         )
 
+        # We will dilate the solids and this will "creep" into the void phase
+        solids_as_true = tf.identity(p_media)
+        solids_as_true = tf.math.logical_not(solids_as_true)
+
         # Map each individual porous media to binary erosion
         grain_boundaries = tf.map_fn(
-            binary_erosion_tf, p_media, tf.bool
+            binary_dilation_tf, solids_as_true, tf.bool
         )
+        # Flip `True` to `False` and vice versa so voids are `True` again
+        grain_boundaries = tf.math.logical_not(grain_boundaries)
 
         p_media = tf.cast(p_media, tf.float32)
         grain_boundaries = tf.cast(grain_boundaries, tf.float32)
