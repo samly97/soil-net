@@ -1,4 +1,5 @@
 import tensorflow as tf
+from .common import get_masked_conc_map
 
 
 class LaplacianLoss(tf.keras.losses.Loss):
@@ -63,6 +64,15 @@ class LaplacianLoss(tf.keras.losses.Loss):
     def get_config(self):
         cfg = super().get_config()
         return cfg
+
+
+class MaskedMSE(tf.keras.losses.Loss):
+
+    def __init__(self, name="masked_mse"):
+        super().__init__(name=name)
+
+    def call(self, y_true, y_pred):
+        return get_masked_conc_map(y_true, y_pred)
 
 
 class OverallLoss(tf.keras.losses.Loss):
