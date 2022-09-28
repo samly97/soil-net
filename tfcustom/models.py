@@ -48,8 +48,8 @@ def predict_tortuosity(
 
         # Computes (dim - 2) differences
         flux = tf.math.subtract(from_inlet, layer_adj_2_inlet)
-        flux = tf.math.reduce_sum(flux, axis=1)
-        flux = tf.math.reduce_sum(flux, axis=1)
+        flux = tf.math.reduce_sum(flux, axis=3)
+        flux = tf.math.reduce_sum(flux, axis=2)
 
         return flux
 
