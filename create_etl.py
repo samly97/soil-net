@@ -52,6 +52,7 @@ def get_split_indices(
 
 def create_etl(
     batch_size: int,
+    shuffle: bool = True,
     trn_split: float = 0.8,
     data_dir: str = "dataset",
     soil_dir: str = "soil",
@@ -60,7 +61,9 @@ def create_etl(
 ) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
 
     pic_num = parse_raw_data(data_dir, soil_dir)
-    pic_num = shuffle_dataset(pic_num)
+
+    if shuffle:
+        pic_num = shuffle_dataset(pic_num)
 
     trn_idx, val_idx = get_split_indices(
         trn_split,
