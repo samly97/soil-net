@@ -8,11 +8,12 @@ def predict_tortuosity(
     C_out: float = 0.5,
     dim: int = 128,
 ):
-    r""" `predict_tortuosity` takes the inputs to the Neural Network and
-    estimates the tortuosity from the predicted concentration map.
+    r""" `predict_tortuosity` takes a batch of concentration maps as well as the
+    porous media image to estimate tortuosity. `conc_map` from the Neural
+    Network prediction.
 
     The user could specify the inlet and outlet concentrations as well as
-    the length of the voxel here. Here, it is assumed that the image is
+    the number of pixel in an axis. Here, it is assumed that the image is
     cubic.
     """
 
@@ -34,6 +35,9 @@ def predict_tortuosity(
             flux_mask, soil_bool[:, 1:],
         )
 
+        # Convert to float32 since multiplication preserves tensor shape
+        # whereas a logical operation flattens or turns the tensor into a
+        # ragged tensor.
         flux_mask = tf.cast(flux_mask, tf.float32)
 
         return flux_mask
@@ -104,12 +108,11 @@ def evaluate_abs_rel_err(
     target: tf.types.experimental.TensorLike
 ):
     r""" `evaluate_abs_rel_err` assumes that inputs to the Neural Network is
-    given as their raw inputs, i.e., it does not work on a
-    `tf.data.Dataset`.
+    given as their raw inputs, i.e., it does not work on a `tf.data.Dataset`.
 
     This method returns a Relative Absolute Error of the predicted
-    concentration map from the Neural Network output against the
-    ground-truth results.
+    concentration map from the Neural Network output against the ground-truth
+    results.
     """
 
     # Predict concentration map using Neural Network

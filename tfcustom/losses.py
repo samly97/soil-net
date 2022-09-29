@@ -59,7 +59,7 @@ class LaplacianLoss(tf.keras.losses.Loss):
         # void space: (solid/boundary (eroded void)/void)
 
         # Create a function to map each individual tensor in a tensor array to
-        # the `binary_erosion` function. Otherwise, the erosion would occur on
+        # the `binary_dilation` function. Otherwise, the erosion would occur on
         # ALL the tensors in the array simultaneously. Which is clearly not
         # what we want.
         def binary_dilation_tf(p_media_arr): return tf.py_function(
